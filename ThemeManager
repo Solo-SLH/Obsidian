@@ -128,7 +128,39 @@ local ThemeManager = {
         ["Material"] = {
             18,
             { FontColor = "eeffff", MainColor = "212121", AccentColor = "82aaff", BackgroundColor = "151515", OutlineColor = "424242", BackgroundImage = "" },
-        }
+        },
+        ["Ayu"] = {
+            19,
+            { FontColor = "e6e1cf", MainColor = "1f2430", AccentColor = "ffb454", BackgroundColor = "0f1419", OutlineColor = "2d3640", BackgroundImage = "" },
+        },
+        ["Rose Pine"] = {
+            20,
+            { FontColor = "e0def4", MainColor = "26233a", AccentColor = "eb6f92", BackgroundColor = "191724", OutlineColor = "403d52", BackgroundImage = "" },
+        },
+        ["Everforest"] = {
+            21,
+            { FontColor = "d3c6aa", MainColor = "3a454a", AccentColor = "a7c080", BackgroundColor = "2d353b", OutlineColor = "475258", BackgroundImage = "" },
+        },
+        ["Palenight"] = {
+            22,
+            { FontColor = "a6accd", MainColor = "292d3e", AccentColor = "c792ea", BackgroundColor = "1b1e2b", OutlineColor = "444267", BackgroundImage = "" },
+        },
+        ["Synthwave"] = {
+            23,
+            { FontColor = "f4eee4", MainColor = "241b2f", AccentColor = "ff7edb", BackgroundColor = "1a1626", OutlineColor = "34294f", BackgroundImage = "" },
+        },
+        ["Horizon"] = {
+            24,
+            { FontColor = "e0dfe1", MainColor = "232530", AccentColor = "e95678", BackgroundColor = "1c1e26", OutlineColor = "2e303e", BackgroundImage = "" },
+        },
+        ["Night Owl"] = {
+            25,
+            { FontColor = "d6deeb", MainColor = "1d3b53", AccentColor = "82aaff", BackgroundColor = "011627", OutlineColor = "2c4f6b", BackgroundImage = "" },
+        },
+        ["Kanagawa"] = {
+            26,
+            { FontColor = "dcd7ba", MainColor = "2a2a37", AccentColor = "7e9cd8", BackgroundColor = "1f1f28", OutlineColor = "363646", BackgroundImage = "" },
+        },
     }
 }
 
