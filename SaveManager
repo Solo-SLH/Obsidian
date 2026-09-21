@@ -159,7 +159,7 @@ local function easyConfigFolder()
     if not SaveManager.EasyConfigEnabled or isEmpty(SaveManager.EasyConfigName) then return false end
     local player = Players.LocalPlayer
     if not player then return false end
-    return string.format("!SLH/%s", player.Name)
+    return string.format("!Maoya/%s", player.Name)
 end
 
 local function baseFolder()
@@ -397,7 +397,7 @@ local function stopEasyConfigThread()
     end
 end
 
--- Switches saving to workspace/!SLH/<Player>/, loads any existing
+-- Switches saving to workspace/!Maoya/<Player>/, loads any existing
 -- autosave for `name`, then autosaves on a loop.
 function SaveManager:EasyConfig(name)
     if isEmpty(name) or not isValidName(name) then return false, "Invalid name provided" end
