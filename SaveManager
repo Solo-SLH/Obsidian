@@ -6,6 +6,7 @@ local clonefunction = (clonefunction or copyfunction or function(func)
 end)
 
 local HttpService: HttpService = cloneref(game:GetService("HttpService"))
+local Players: Players = cloneref(game:GetService("Players"))
 
 --// Fix is_____ functions for shitsploits, those functions should never error, only return a boolean. (why is this still a problem in the big 2026)
 local isfolder, isfile, listfiles = isfolder, isfile, listfiles
@@ -32,15 +33,19 @@ end
 --// Save Manager
 local SaveManager = {
     Library = nil,
-
     Folder = "ObsidianLibSettings",
     SubFolder = "",
-
     Ignore = {},
     LoadingOrder = {},
     UseLoadingOrder = false,
+    AutoloadConfig = nil,
 
-    AutoloadConfig = nil
+    --// EasyConfig
+    EasyConfigEnabled = false,
+    EasyConfigName = nil,
+    EasyConfigConfigName = "autosave",
+    EasyConfigInterval = 5, -- seconds between autosaves
+    EasyConfigThread = nil,
 }
 
 function SaveManager:SetLibrary(Library)
@@ -317,6 +322,29 @@ local function GetCurrentSettingsPath(): false | string
     local SubFolderPath = GetSubFolderPath()
     return if SubFolderPath == false then GetFolderPath() else SubFolderPath
 end
+local function GetEasyConfigFolderPath(): false | string
+    if SaveManager.EasyConfigEnabled ~= true or IsStringEmpty(SaveManager.EasyConfigName) then
+        return false
+    end
+
+    local LocalPlayer = Players.LocalPlayer
+    if not LocalPlayer then
+        return false
+    end
+
+    -- workspace/!SLH/<PlayerName>/<Name>
+    return string.format("!SLH/%s/%s", LocalPlayer.Name, SaveManager.EasyConfigName)
+end
+
+local function GetCurrentSettingsPath(): false | string
+    local EasyConfigPath = GetEasyConfigFolderPath()
+    if EasyConfigPath ~= false then
+        return EasyConfigPath
+    end
+
+    local SubFolderPath = GetSubFolderPath()
+    return if SubFolderPath == false then GetFolderPath() else SubFolderPath
+end
 
 --// Files helper \\--
 local function GetConfigPath(ConfigName: string): false | string
@@ -357,12 +385,16 @@ end
 
 --// Folders \\--
 function SaveManager:GetPaths(): {string}
+    local EasyConfigPath = GetEasyConfigFolderPath()
+    if EasyConfigPath ~= false then
+        return SplitPath(EasyConfigPath)
+    end
+
     local SubFolderPath = GetSubFolderPath()
     if SubFolderPath == false then
         local FolderPath = GetFolderPath()
         return if FolderPath == false then {} else SplitPath(FolderPath)
     end
-
     return SplitPath(SubFolderPath)
 end
 
@@ -636,6 +668,85 @@ function SaveManager:Delete(ConfigName: string): (boolean | string?)
     end
 
     return true
+end
+
+--// EasyConfig \\--
+
+-- Stops any running EasyConfig autosave loop without disabling
+-- EasyConfig mode itself (internal helper).
+local function StopEasyConfigThread()
+    if SaveManager.EasyConfigThread then
+        task.cancel(SaveManager.EasyConfigThread)
+        SaveManager.EasyConfigThread = nil
+    end
+end
+
+-- SaveManager:EasyConfig(Name)
+--   Name is the game/map identifier, e.g. "BloxFruit".
+--
+--   Switches saving to: workspace/!SLH/<LocalPlayer.Name>/<Name>/
+--   Loads the existing autosave for that Name if one exists, then
+--   starts a loop that periodically calls SaveManager:Save(...) so
+--   the config is kept up to date automatically.
+function SaveManager:EasyConfig(Name: string): (boolean, string?)
+    if IsStringEmpty(Name) or not IsValidFolderPath(Name) then
+        return false, "Invalid name provided"
+    end
+
+    StopEasyConfigThread()
+
+    SaveManager.EasyConfigEnabled = true
+    SaveManager.EasyConfigName = Name
+
+    SaveManager:BuildFolderTree()
+
+    local ConfigName = SaveManager.EasyConfigConfigName
+
+    --// Load whatever was previously saved for this Name, if anything
+    if DoesConfigExist(ConfigName) then
+        local Success, ErrorMessage = SaveManager:Load(ConfigName)
+        if not Success and SaveManager.Library then
+            SaveManager.Library:Notify(
+                string.format("EasyConfig (%s): Failed to load existing config: %s", Name, tostring(ErrorMessage))
+            )
+        end
+    end
+
+    --// Loop: periodically save so the config stays current
+    SaveManager.EasyConfigThread = task.spawn(function()
+        while SaveManager.EasyConfigEnabled and SaveManager.EasyConfigName == Name do
+            task.wait(SaveManager.EasyConfigInterval)
+
+            if not (SaveManager.EasyConfigEnabled and SaveManager.EasyConfigName == Name) then
+                break
+            end
+
+            local Success, ErrorMessage = SaveManager:Save(ConfigName)
+            if not Success and SaveManager.Library then
+                SaveManager.Library:Notify(
+                    string.format("EasyConfig (%s): Failed to save: %s", Name, tostring(ErrorMessage))
+                )
+            end
+        end
+    end)
+
+    return true
+end
+
+-- SaveManager:StopEasyConfig()
+--   Stops the autosave loop and disables EasyConfig mode, reverting
+--   future saves/loads to SaveManager.Folder / SaveManager.SubFolder.
+function SaveManager:StopEasyConfig()
+    StopEasyConfigThread()
+    SaveManager.EasyConfigEnabled = false
+    SaveManager.EasyConfigName = nil
+end
+
+-- SaveManager:SetEasyConfigInterval(Seconds)
+--   Optional: change how often the autosave loop saves (default 5s).
+function SaveManager:SetEasyConfigInterval(Seconds: number)
+    assert(typeof(Seconds) == "number" and Seconds > 0, "Expected positive number")
+    SaveManager.EasyConfigInterval = Seconds
 end
 
 --// Auto Load Config \\--
