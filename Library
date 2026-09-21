@@ -3817,6 +3817,14 @@ function Library:AddContextMenu(
             Table:Open()
         end
     end
+    
+    _G.Toggle = function(call)
+        if not call then
+            Table:Close()
+        else
+            Table:Open()
+        end
+    end
 
     function Table:SetSize(Size)
         Table.Size = Size
