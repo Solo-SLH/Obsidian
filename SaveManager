@@ -688,47 +688,39 @@ end
 --   Loads the existing autosave for that Name if one exists, then
 --   starts a loop that periodically calls SaveManager:Save(...) so
 --   the config is kept up to date automatically.
-function SaveManager:EasyConfig(Name: string): (boolean, string?)
-    if IsStringEmpty(Name) or not IsValidFolderPath(Name) then
-        return false, "Invalid name provided"
+function SaveManager:EasyConfig(ConfigName: string): (boolean, string?)
+    if IsStringEmpty(ConfigName) then
+        return false, "Invalid config name provided"
     end
 
-    StopEasyConfigThread()
-
-    SaveManager.EasyConfigEnabled = true
-    SaveManager.EasyConfigName = Name
-
-    SaveManager:BuildFolderTree()
-
-    local ConfigName = SaveManager.EasyConfigConfigName
-
-    --// Load whatever was previously saved for this Name, if anything
-    if DoesConfigExist(ConfigName) then
-        local Success, ErrorMessage = SaveManager:Load(ConfigName)
-        if not Success and SaveManager.Library then
-            SaveManager.Library:Notify(
-                string.format("EasyConfig (%s): Failed to load existing config: %s", Name, tostring(ErrorMessage))
-            )
-        end
+    if string.lower(ConfigName) == "autoload" then
+        return false, "Invalid config name provided"
     end
 
-    --// Loop: periodically save so the config stays current
-    SaveManager.EasyConfigThread = task.spawn(function()
-        while SaveManager.EasyConfigEnabled and SaveManager.EasyConfigName == Name do
-            task.wait(SaveManager.EasyConfigInterval)
+    local Player = game:GetService("Players").LocalPlayer
+    local PlayerName = (Player and Player.Name) or "Unknown"
 
-            if not (SaveManager.EasyConfigEnabled and SaveManager.EasyConfigName == Name) then
-                break
-            end
+    local BaseFolder = "!SLH"
+    local PlayerFolder = string.format("%s/%s", BaseFolder, PlayerName)
+    local ConfigPath = string.format("%s/%s.json", PlayerFolder, ConfigName)
 
-            local Success, ErrorMessage = SaveManager:Save(ConfigName)
-            if not Success and SaveManager.Library then
-                SaveManager.Library:Notify(
-                    string.format("EasyConfig (%s): Failed to save: %s", Name, tostring(ErrorMessage))
-                )
-            end
-        end
-    end)
+    --// Ensure folders exist
+    if not isfolder(BaseFolder) then
+        makefolder(BaseFolder)
+    end
+    if not isfolder(PlayerFolder) then
+        makefolder(PlayerFolder)
+    end
+
+    local EncodedData, SuccessEncode, EncodeErrorMessage = SaveManager:SaveJSON(ConfigName)
+    if not SuccessEncode then
+        return false, EncodeErrorMessage
+    end
+
+    local SuccessWrite, ErrorMessage = pcall(writefile, ConfigPath, EncodedData)
+    if not SuccessWrite then
+        return false, "Failed to write config file: " .. tostring(ErrorMessage)
+    end
 
     return true
 end
