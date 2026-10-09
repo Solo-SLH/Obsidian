@@ -276,12 +276,11 @@ function SaveManager:RefreshConfigList()
     end
     return names
 end
-
--- // Save / Load \\--
 function SaveManager:SaveJSON(configName)
     local library, ignore = self.Library, self.Ignore
+    
+    -- Setup base data WITHOUT the timestamp first for a clean diff check
     local data = {
-        timestamp = os.date("%d.%m.%Y %H:%M:%S"),
         name = configName or "",
         objects = {},
         keybindMenu = library.KeybindFrame and {
@@ -290,36 +289,35 @@ function SaveManager:SaveJSON(configName)
         } or nil
     }
 
-    local collectedIndexes = {} -- [NEW] เก็บรายชื่อ index ที่มีอยู่แล้ว
+    local collectedIndexes = {}
 
     local function collect(list)
-        for idx, el in list do
+        for idx, el in pairs(list) do
             local parser = el.Type and ElementParser[el.Type]
             if parser and not ignore[idx] then 
                 table.insert(data.objects, parser.Save(idx, el)) 
-                collectedIndexes[idx] = true -- [NEW]
+                collectedIndexes[idx] = true 
             end
         end
     end
     collect(library.Toggles)
     collect(library.Options)
 
-    for tabIdx, tab in library.Tabs do
-        for _, groupName in { "Groupboxes", "Tabboxes" } do
+    for tabIdx, tab in pairs(library.Tabs) do
+        for _, groupName in ipairs({ "Groupboxes", "Tabboxes" }) do
             local group = tab[groupName]
             local parser = ElementParser[groupName == "Groupboxes" and "Groupbox" or "Tabbox"]
             if group then
-                for idx, box in group do
+                for idx, box in pairs(group) do
                     if typeof(idx) == "string" and not ignore[idx] then
                         table.insert(data.objects, parser.Save(idx, box, tabIdx))
-                        collectedIndexes[idx] = true -- [NEW]
+                        collectedIndexes[idx] = true 
                     end
                 end
             end
         end
     end
 
-    -- [NEW] นำ Config เก่าจาก Cache ที่ไม่ได้อยู่ใน UI ณ ปัจจุบันมารวมด้วย
     if self.CachedData then
         for idx, obj in pairs(self.CachedData) do
             if not collectedIndexes[idx] and not ignore[idx] then
@@ -328,12 +326,19 @@ function SaveManager:SaveJSON(configName)
         end
     end
 
+    -- 1. Encode the raw data to use as our blazing-fast diff hash
+    local diffOk, diffHash = pcall(HttpService.JSONEncode, HttpService, data)
+    local hashToReturn = diffOk and diffHash or ""
+
+    -- 2. Inject the timestamp AFTER hashing, so the file still gets it
+    data.timestamp = os.date("%d.%m.%Y %H:%M:%S")
+    
+    -- 3. Encode the final string for saving
     local ok, encoded = pcall(HttpService.JSONEncode, HttpService, data)
-    if not ok then return "", false, "Failed to encode data" end
-    return encoded, true
+    if not ok then return "", false, "Failed to encode data", "" end
+    
+    return encoded, true, nil, hashToReturn
 end
--- Add a property to the top of your SaveManager table:
--- LastSavedHash = nil,
 
 function SaveManager:Save(configName)
     if isEmpty(configName) or configName:lower() == "autoload" then
@@ -360,13 +365,14 @@ function SaveManager:Save(configName)
         end
     end
 
-    local encoded, ok, err = self:SaveJSON(configName)
+    -- Retrieve the final string AND the diff hash
+    local encoded, ok, err, dataHash = self:SaveJSON(configName)
     if not ok then return false, err end
 
-    -- Smart Save Diff: Remove the dynamic timestamp and check if actual data changed
-    local dataHash = encoded:gsub('"timestamp":"[^"]+",?', '')
+    -- Smart Save Diff: Check the clean hash against the last save. 
+    -- If it's identical, instantly abort the I/O write (zero lag).
     if self.LastSavedHash == dataHash then
-        return true -- Data hasn't changed, skip disk write
+        return true 
     end
     self.LastSavedHash = dataHash
 
