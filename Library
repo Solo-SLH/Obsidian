@@ -473,7 +473,7 @@ local Templates = {
         Icon = 95816097006870,
         IconSize = UDim2.fromOffset(30, 30),
 
-        LoadingIcon = CustomImageManager.GetAsset("LoadingIcon"),
+        LoadingIcon = 7733989869,
         LoadingIconColor = nil,
         LoadingIconTweenTime = 1,
 
