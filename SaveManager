@@ -332,6 +332,8 @@ function SaveManager:SaveJSON(configName)
     if not ok then return "", false, "Failed to encode data" end
     return encoded, true
 end
+-- Add a property to the top of your SaveManager table:
+-- LastSavedHash = nil,
 
 function SaveManager:Save(configName)
     if isEmpty(configName) or configName:lower() == "autoload" then
@@ -343,7 +345,6 @@ function SaveManager:Save(configName)
 
     self:CheckFolderTree()
 
-    -- [NEW] โหลดข้อมูลเดิมมาเก็บใน Cache ก่อนบันทึกทับ เพื่อรักษา Config เก่า
     if isfile(path) then
         local ok, content = pcall(readfile, path)
         if ok then
@@ -361,6 +362,13 @@ function SaveManager:Save(configName)
 
     local encoded, ok, err = self:SaveJSON(configName)
     if not ok then return false, err end
+
+    -- Smart Save Diff: Remove the dynamic timestamp and check if actual data changed
+    local dataHash = encoded:gsub('"timestamp":"[^"]+",?', '')
+    if self.LastSavedHash == dataHash then
+        return true -- Data hasn't changed, skip disk write
+    end
+    self.LastSavedHash = dataHash
 
     local writeOk, writeErr = pcall(writefile, path, encoded)
     if not writeOk then return false, "Failed to write config file: " .. tostring(writeErr) end
@@ -434,7 +442,6 @@ function SaveManager:Delete(configName)
     if configName == self.AutoloadConfig then self:DeleteAutoLoadConfig() end
     return true
 end
-
 -- // EasyConfig \\--
 local function stopEasyConfigThread()
     if SaveManager.EasyConfigThread then
@@ -443,8 +450,6 @@ local function stopEasyConfigThread()
     end
 end
 
--- Switches saving to workspace/!Maoya/<Player>/, loads any existing
--- autosave for `name`, then autosaves on a loop.
 function SaveManager:EasyConfig(name)
     if isEmpty(name) or not isValidName(name) then return false, "Invalid name provided" end
 
@@ -460,17 +465,32 @@ function SaveManager:EasyConfig(name)
         end
     end
 
-    self.EasyConfigThread = task.spawn(function()
-        while self.EasyConfigEnabled and self.EasyConfigName == name do
-            task.wait(self.EasyConfigInterval)
-            if not (self.EasyConfigEnabled and self.EasyConfigName == name) then break end
+    -- Event-driven save debounce (replaces the infinite loop)
+    local function requestSave()
+        if not self.EasyConfigEnabled or self.EasyConfigName ~= name then return end
+        if self.EasyConfigThread then return end -- A save is already queued
 
+        self.EasyConfigThread = task.delay(self.EasyConfigInterval, function()
+            self.EasyConfigThread = nil -- Reset timer status so future changes can queue again
+            
             local ok, err = self:Save(name)
             if not ok then
                 self.Library:Notify(string.format("EasyConfig (%s): Failed to save: %s", name, tostring(err)))
             end
+        end)
+    end
+
+    -- Hook all current UI elements to trigger requestSave on change
+    local function hookElements(list)
+        for _, element in pairs(list) do
+            if typeof(element) == "table" and type(element.OnChanged) == "function" then
+                element:OnChanged(requestSave)
+            end
         end
-    end)
+    end
+
+    hookElements(self.Library.Toggles)
+    hookElements(self.Library.Options)
 
     return true
 end
