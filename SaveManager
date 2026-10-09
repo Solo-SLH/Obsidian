@@ -22,6 +22,7 @@ local SaveManager = {
     LoadingOrder = {},
     UseLoadingOrder = false,
     AutoloadConfig = nil,
+    CachedData = {}, -- [NEW] เพิ่มตัวแปรนี้เพื่อเก็บ Config เก่า
 
     EasyConfigEnabled = false,
     EasyConfigName = nil,
@@ -49,6 +50,7 @@ local function simpleParser(get, apply)
         Save = function(idx, el) return { value = get(el) } end,
         Load = function(el, data)
             if not el then return end
+            if data.value == nil then return end -- [NEW] ป้องกันไม่ให้เอาค่า nil ไปทับค่า Default
             if el.Value == data.value then el:RunChanged() else apply(el, data) end
         end
     }
@@ -61,18 +63,22 @@ local ElementParser = {
     Input = {
         Save = function(idx, i) return { text = i.Value } end,
         Load = function(el, d)
-            if not el or typeof(d.text) ~= "string" then return end
+            if not el or typeof(d.text) ~= "string" or d.text == nil then return end
             if el.Value == d.text then el:RunChanged() else el:SetValue(d.text) end
         end
     },
     ColorPicker = {
         Save = function(idx, c) return { value = c.Value:ToHex(), transparency = c.Transparency } end,
-        Load = function(el, d) if el then el:SetValueRGB(Color3.fromHex(d.value), d.transparency) end end
+        Load = function(el, d) 
+            if el and d.value ~= nil then -- [NEW] เช็ค nil
+                el:SetValueRGB(Color3.fromHex(d.value), d.transparency) 
+            end 
+        end
     },
     KeyPicker = {
         Save = function(idx, k) return { mode = k.Mode, key = k.Value, modifiers = k.Modifiers, toggled = k.Toggled } end,
         Load = function(el, d)
-            if not el then return end
+            if not el or d.key == nil then return end -- [NEW] เช็ค nil
             el:SetValue({ d.key, d.mode, d.modifiers })
             if d.mode == "Toggle" and d.toggled ~= nil then
                 el.Toggled = d.toggled
@@ -284,10 +290,15 @@ function SaveManager:SaveJSON(configName)
         } or nil
     }
 
+    local collectedIndexes = {} -- [NEW] เก็บรายชื่อ index ที่มีอยู่แล้ว
+
     local function collect(list)
         for idx, el in list do
             local parser = el.Type and ElementParser[el.Type]
-            if parser and not ignore[idx] then table.insert(data.objects, parser.Save(idx, el)) end
+            if parser and not ignore[idx] then 
+                table.insert(data.objects, parser.Save(idx, el)) 
+                collectedIndexes[idx] = true -- [NEW]
+            end
         end
     end
     collect(library.Toggles)
@@ -301,8 +312,18 @@ function SaveManager:SaveJSON(configName)
                 for idx, box in group do
                     if typeof(idx) == "string" and not ignore[idx] then
                         table.insert(data.objects, parser.Save(idx, box, tabIdx))
+                        collectedIndexes[idx] = true -- [NEW]
                     end
                 end
+            end
+        end
+    end
+
+    -- [NEW] นำ Config เก่าจาก Cache ที่ไม่ได้อยู่ใน UI ณ ปัจจุบันมารวมด้วย
+    if self.CachedData then
+        for idx, obj in pairs(self.CachedData) do
+            if not collectedIndexes[idx] and not ignore[idx] then
+                table.insert(data.objects, obj)
             end
         end
     end
@@ -321,6 +342,23 @@ function SaveManager:Save(configName)
     if not path then return false, "Invalid config name provided" end
 
     self:CheckFolderTree()
+
+    -- [NEW] โหลดข้อมูลเดิมมาเก็บใน Cache ก่อนบันทึกทับ เพื่อรักษา Config เก่า
+    if isfile(path) then
+        local ok, content = pcall(readfile, path)
+        if ok then
+            local decodeOk, decoded = pcall(HttpService.JSONDecode, HttpService, content)
+            if decodeOk and typeof(decoded) == "table" and typeof(decoded.objects) == "table" then
+                self.CachedData = self.CachedData or {}
+                for _, obj in decoded.objects do
+                    if obj.idx and not self.CachedData[obj.idx] then
+                        self.CachedData[obj.idx] = obj
+                    end
+                end
+            end
+        end
+    end
+
     local encoded, ok, err = self:SaveJSON(configName)
     if not ok then return false, err end
 
@@ -335,6 +373,14 @@ function SaveManager:LoadJSON(content)
     local ok, decoded = pcall(HttpService.JSONDecode, HttpService, content)
     if not ok or typeof(decoded) ~= "table" or typeof(decoded.objects) ~= "table" then
         return false, "Failed to decode config data"
+    end
+
+    -- [NEW] จดจำ Config ทั้งหมดที่โหลดขึ้นมาลง Cache
+    self.CachedData = {}
+    for _, obj in decoded.objects do
+        if obj.idx then
+            self.CachedData[obj.idx] = obj
+        end
     end
 
     local library, order, ignore = self.Library, self.LoadingOrder, self.Ignore
